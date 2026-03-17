@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Mission Control</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <main class="page">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">OpenClaw local-only read-only viewer</p>
+        <h1>Mission Control</h1>
+        <p class="subtle">Primary unit: sub-agent runs parsed from local session history.</p>
+      </div>
+      <button id="refreshBtn">Refresh</button>
+    </header>
+
+    <section id="summary" class="summary"></section>
+    <section id="runs" class="runs"></section>
+  </main>
+
+  <template id="runTemplate">
+    <article class="run-card">
+      <div class="run-head">
+        <div>
+          <div class="run-title-row">
+            <span class="status-pill"></span>
+            <h2 class="run-title"></h2>
+          </div>
+          <p class="run-meta"></p>
+        </div>
+        <div class="metrics"></div>
+      </div>
+
+      <div class="grid two">
+        <section>
+          <h3>Task</h3>
+          <p class="summary-text task-summary"></p>
+          <details><summary>Raw task</summary><pre class="raw task-raw"></pre></details>
+        </section>
+        <section>
+          <h3>Input</h3>
+          <p class="summary-text input-summary"></p>
+          <details><summary>Raw input</summary><pre class="raw input-raw"></pre></details>
+        </section>
+      </div>
+
+      <section>
+        <h3>Output</h3>
+        <p class="summary-text output-summary"></p>
+        <details><summary>Raw output</summary><pre class="raw output-raw"></pre></details>
+      </section>
+
+      <details>
+        <summary>Run details</summary>
+        <div class="details-grid"></div>
+      </details>
+    </article>
+  </template>
+
+  <script src="/app.js"></script>
+</body>
+</html>

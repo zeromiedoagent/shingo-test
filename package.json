@@ -1,0 +1,9 @@
+{
+  "name": "shingo-mission-control",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local-only read-only OpenClaw mission control viewer",
+  "scripts": {
+    "start": "node server.js"
+  }
+}
