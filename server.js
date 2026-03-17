@@ -7,6 +7,7 @@ const PORT = Number(process.env.PORT || 3210);
 const HOST = process.env.HOST || '127.0.0.1';
 const ROOT = '/home/katherine/.openclaw';
 const PUBLIC_DIR = path.join(__dirname, 'public');
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 function readJson(file) {
   return JSON.parse(fs.readFileSync(file, 'utf8'));
@@ -101,6 +102,13 @@ function loadSessionEvents(sessionFile) {
     .filter(Boolean);
 }
 
+function buildSearchText(parts) {
+  return parts
+    .filter(Boolean)
+    .join(' \n ')
+    .toLowerCase();
+}
+
 function buildRunRecord(runId, runMeta, sessionsMap) {
   const childKey = runMeta.childSessionKey;
   const sessionEntry = sessionsMap[childKey] || {};
@@ -122,7 +130,7 @@ function buildRunRecord(runId, runMeta, sessionsMap) {
   const lastAt = timestamps[timestamps.length - 1] || null;
   const status = sessionFile ? sessionStatus(runMeta, sessionEntry, sessionFile, finalOutput) : 'missing';
 
-  return {
+  const record = {
     id: runId,
     label: runMeta.label || childKey,
     status,
@@ -162,6 +170,19 @@ function buildRunRecord(runId, runMeta, sessionsMap) {
       sessionFile
     ].filter(Boolean)
   };
+
+  record.searchText = buildSearchText([
+    record.label,
+    record.status,
+    record.requester,
+    record.childSessionKey,
+    record.sessionId,
+    record.taskRaw,
+    record.inputRaw,
+    record.outputRaw
+  ]);
+
+  return record;
 }
 
 function buildOrphanSubagentRecords(sessionsMap, knownSessionKeys) {
@@ -180,7 +201,7 @@ function buildOrphanSubagentRecords(sessionsMap, knownSessionKeys) {
       const msg = event?.message;
       if (event?.type === 'message' && msg?.role === 'assistant') sumUsage(usageTotals, msg.usage);
     }
-    rows.push({
+    const record = {
       id: sessionEntry.sessionId || sessionKey,
       label: sessionEntry.label || sessionKey,
       status: sessionStatus(null, sessionEntry, sessionFile, finalOutput),
@@ -215,9 +236,68 @@ function buildOrphanSubagentRecords(sessionsMap, knownSessionKeys) {
       eventCount: events.length,
       toolCallCount: events.filter((e) => e.type === 'message' && e.message?.role === 'assistant').reduce((n, e) => n + ((e.message.content || []).filter((p) => p.type === 'toolCall').length), 0),
       sourceFiles: [sessionFile]
-    });
+    };
+    record.searchText = buildSearchText([
+      record.label,
+      record.status,
+      record.requester,
+      record.childSessionKey,
+      record.sessionId,
+      record.taskRaw,
+      record.inputRaw,
+      record.outputRaw
+    ]);
+    rows.push(record);
   }
   return rows;
+}
+
+function pickRecentTs(item) {
+  return item.lastAt || item.startedAt || item.createdAt || item.archiveAt || null;
+}
+
+function computeSummary(items) {
+  const now = Date.now();
+  const todayStart = new Date();
+  todayStart.setUTCHours(0, 0, 0, 0);
+  const todayMs = todayStart.getTime();
+
+  const summary = {
+    runs: 0,
+    statuses: {},
+    totalTokens: 0,
+    totalCost: 0,
+    todayRuns: 0,
+    runningNow: 0,
+    completedToday: 0,
+    updatedLastHour: 0,
+    recent24h: 0,
+    activeStatuses: 0,
+    requesters: new Set()
+  };
+
+  for (const item of items) {
+    summary.runs += 1;
+    summary.statuses[item.status] = (summary.statuses[item.status] || 0) + 1;
+    summary.totalTokens += item.usage.totalTokens || 0;
+    summary.totalCost += item.usage.cost.total || 0;
+    if (item.requester) summary.requesters.add(item.requester);
+    if (item.status === 'running') summary.runningNow += 1;
+
+    const startedMs = item.startedAt ? new Date(item.startedAt).getTime() : 0;
+    const recentMs = pickRecentTs(item) ? new Date(pickRecentTs(item)).getTime() : 0;
+
+    if (startedMs >= todayMs) summary.todayRuns += 1;
+    if (startedMs >= todayMs && item.status === 'completed') summary.completedToday += 1;
+    if (recentMs >= now - (60 * 60 * 1000)) summary.updatedLastHour += 1;
+    if (recentMs >= now - DAY_MS) summary.recent24h += 1;
+  }
+
+  summary.activeStatuses = Object.keys(summary.statuses).length;
+  summary.requesterCount = summary.requesters.size;
+  summary.totalCost = fmtMoney(summary.totalCost);
+  delete summary.requesters;
+  return summary;
 }
 
 function loadData() {
@@ -234,23 +314,23 @@ function loadData() {
 
   const orphanRuns = buildOrphanSubagentRecords(sessionsMap, knownSessionKeys);
   const items = [...subagentRuns, ...orphanRuns].sort((a, b) => {
-    const ta = new Date(a.startedAt || a.createdAt || 0).getTime();
-    const tb = new Date(b.startedAt || b.createdAt || 0).getTime();
+    const ta = new Date(pickRecentTs(a) || 0).getTime();
+    const tb = new Date(pickRecentTs(b) || 0).getTime();
     return tb - ta;
   });
 
-  const totals = items.reduce((acc, item) => {
-    acc.runs += 1;
-    acc.statuses[item.status] = (acc.statuses[item.status] || 0) + 1;
-    acc.totalTokens += item.usage.totalTokens || 0;
-    acc.totalCost += item.usage.cost.total || 0;
-    return acc;
-  }, { runs: 0, statuses: {}, totalTokens: 0, totalCost: 0 });
+  const summary = computeSummary(items);
 
   return {
     generatedAt: new Date().toISOString(),
     root: ROOT,
-    totals: { ...totals, totalCost: fmtMoney(totals.totalCost) },
+    totals: {
+      runs: summary.runs,
+      statuses: summary.statuses,
+      totalTokens: summary.totalTokens,
+      totalCost: summary.totalCost
+    },
+    summary,
     items
   };
 }

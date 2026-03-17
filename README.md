@@ -10,6 +10,9 @@ Simple local-only read-only Mission Control viewer for OpenClaw sub-agent runs.
 - exposes raw task/input/output in expandable sections
 - shows token and cost data where present in session history
 - gives basic historical visibility across current and older sub-agent sessions
+- adds quick operational summary cards for today/recent activity
+- supports status filtering and free-text search
+- supports auto-refresh for lightweight live monitoring
 
 ## Data sources
 
@@ -28,10 +31,20 @@ Then open:
 
 - `http://127.0.0.1:3210`
 
+## v1.1 additions
+
+- summary cards for visible runs, running now, today/completed today, updated last hour, requester count, spend, and token totals
+- status filter
+- time view filter: all history / today / last 24h / last 7 days
+- search across task, label, requester, child session key, session ID, and output text
+- auto-refresh toggle (15s)
+
 ## Notes / limits
 
 - local-only by default: binds to `127.0.0.1`
 - read-only: does not modify OpenClaw history
-- v1 is intentionally basic and file-driven
+- still intentionally basic and file-driven
 - spend/tokens only appear when recorded in the session JSONL usage blocks
-- this currently focuses on sub-agent sessions and orphaned historic sub-agent session entries; it does not attempt to model every non-subagent OpenClaw session type
+- search is simple substring matching over prebuilt lower-cased text
+- “today” and recent views are driven by the best available created/started/last-update timestamps in retained local files
+- this still focuses on sub-agent sessions and orphaned historic sub-agent session entries; it does not attempt to model every non-subagent OpenClaw session type

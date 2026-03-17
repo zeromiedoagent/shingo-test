@@ -12,12 +12,45 @@
       <div>
         <p class="eyebrow">OpenClaw local-only read-only viewer</p>
         <h1>Mission Control</h1>
-        <p class="subtle">Primary unit: sub-agent runs parsed from local session history.</p>
+        <p class="subtle">Sub-agent runs, quick ops summary, and recent activity from local session history.</p>
       </div>
-      <button id="refreshBtn">Refresh</button>
+      <div class="topbar-actions">
+        <label class="toggle-row">
+          <input id="autoRefreshToggle" type="checkbox" checked />
+          <span>Auto-refresh</span>
+        </label>
+        <button id="refreshBtn">Refresh</button>
+      </div>
     </header>
 
     <section id="summary" class="summary"></section>
+
+    <section class="toolbar">
+      <div class="search-wrap">
+        <label for="searchInput">Search</label>
+        <input id="searchInput" type="search" placeholder="Task, label, requester, or session key" />
+      </div>
+      <div class="filter-wrap">
+        <label for="statusFilter">Status</label>
+        <select id="statusFilter">
+          <option value="all">All statuses</option>
+        </select>
+      </div>
+      <div class="filter-wrap">
+        <label for="timeFilter">View</label>
+        <select id="timeFilter">
+          <option value="all">All history</option>
+          <option value="today">Today</option>
+          <option value="24h">Last 24h</option>
+          <option value="7d">Last 7 days</option>
+        </select>
+      </div>
+      <div class="toolbar-meta">
+        <div id="resultsMeta" class="subtle">Loading…</div>
+        <div id="refreshMeta" class="subtle"></div>
+      </div>
+    </section>
+
     <section id="runs" class="runs"></section>
   </main>
 
