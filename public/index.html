@@ -12,7 +12,7 @@
       <div>
         <p class="eyebrow">OpenClaw local-only read-only viewer</p>
         <h1>Mission Control</h1>
-        <p class="subtle">Sub-agent runs, quick ops summary, and recent activity from local session history.</p>
+        <p class="subtle">Derived local index across sub-agent, spawned, main/session, and cron history reconstructed from local OpenClaw traces.</p>
       </div>
       <div class="topbar-actions">
         <label class="toggle-row">
@@ -34,6 +34,12 @@
         <label for="statusFilter">Status</label>
         <select id="statusFilter">
           <option value="all">All statuses</option>
+        </select>
+      </div>
+      <div class="filter-wrap">
+        <label for="sourceFilter">Source</label>
+        <select id="sourceFilter">
+          <option value="all">All sources</option>
         </select>
       </div>
       <div class="filter-wrap">

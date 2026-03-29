@@ -32,7 +32,7 @@ function kv(label, value) {
 }
 
 function getRecentTs(item) {
-  return item.lastAt || item.startedAt || item.createdAt || item.archiveAt || null;
+  return item.lastAt || item.startedAt || item.createdAt || item.archiveAt || item.updatedAt || null;
 }
 
 function matchesTimeFilter(item, filter) {
@@ -55,10 +55,12 @@ function matchesTimeFilter(item, filter) {
 function applyFilters(items) {
   const search = document.getElementById('searchInput').value.trim().toLowerCase();
   const status = document.getElementById('statusFilter').value;
+  const source = document.getElementById('sourceFilter').value;
   const time = document.getElementById('timeFilter').value;
 
   return items.filter((item) => {
     if (status !== 'all' && item.status !== status) return false;
+    if (source !== 'all' && item.sourceType !== source) return false;
     if (!matchesTimeFilter(item, time)) return false;
     if (search && !String(item.searchText || '').includes(search)) return false;
     return true;
@@ -68,13 +70,17 @@ function applyFilters(items) {
 function renderSummary(data, filteredItems) {
   const summary = document.getElementById('summary');
   const s = data.summary || data.totals || {};
+  const sourceTypes = Object.entries(data.totals.sourceTypes || {}).sort((a, b) => b[1] - a[1]);
+  const topSource = sourceTypes[0] ? `${sourceTypes[0][0]}: ${fmtNum(sourceTypes[0][1])}` : 'No source breakdown yet';
+
   summary.innerHTML = [
-    metric('Visible runs', fmtNum(filteredItems.length), `${fmtNum(data.totals.runs)} total loaded`),
+    metric('Visible runs', fmtNum(filteredItems.length), `${fmtNum(data.totals.runs)} total indexed`),
     metric('Running now', fmtNum(s.runningNow || 0), `${fmtNum(data.totals.statuses.running || 0)} total running`),
     metric('Today', fmtNum(s.todayRuns || 0), `${fmtNum(s.completedToday || 0)} completed today`),
     metric('Updated last hour', fmtNum(s.updatedLastHour || 0), `${fmtNum(s.recent24h || 0)} active in 24h`),
     metric('Unique requesters', fmtNum(s.requesterCount || 0), `${fmtNum(s.activeStatuses || 0)} statuses seen`),
     metric('Observed spend', fmtCost(data.totals.totalCost), `${fmtNum(data.totals.totalTokens || 0)} total tokens`),
+    metric('Index cache', data.cacheStatus || '—', `${topSource} • ${data.cacheFile || 'local cache'}`),
     metric('Generated', fmtDate(data.generatedAt), state.lastLoadedAt ? `UI refreshed ${fmtDate(state.lastLoadedAt)}` : '')
   ].join('');
 }
@@ -94,31 +100,38 @@ function renderRuns(items) {
     statusEl.textContent = item.status;
     statusEl.classList.add(`status-${item.status}`);
     node.querySelector('.run-title').textContent = item.label || item.id;
-    node.querySelector('.run-meta').textContent = `${item.childSessionKey} • started ${fmtDate(item.startedAt)} • last update ${fmtDate(item.lastAt)}`;
+    node.querySelector('.run-meta').textContent = `${item.sourceType} • ${item.childSessionKey || item.sessionId || item.id} • started ${fmtDate(item.startedAt)} • last update ${fmtDate(item.lastAt || item.updatedAt)}`;
     node.querySelector('.metrics').innerHTML = [
       smallMetric('Tokens', fmtNum(item.usage.totalTokens)),
       smallMetric('Spend', fmtCost(item.usage.cost.total)),
-      smallMetric('Tool calls', fmtNum(item.toolCallCount)),
+      smallMetric('Confidence', item.confidence || '—'),
       smallMetric('Events', fmtNum(item.eventCount))
     ].join('');
-    node.querySelector('.task-summary').textContent = item.taskSummary || '—';
+    node.querySelector('.task-summary').textContent = item.taskSummary || item.inferredTaskUnit || '—';
     node.querySelector('.input-summary').textContent = item.inputSummary || '—';
     node.querySelector('.output-summary').textContent = item.outputSummary || '—';
-    node.querySelector('.task-raw').textContent = item.taskRaw || '—';
+    node.querySelector('.task-raw').textContent = item.taskRaw || item.inferredTaskUnit || '—';
     node.querySelector('.input-raw').textContent = item.inputRaw || '—';
     node.querySelector('.output-raw').textContent = item.outputRaw || '—';
     node.querySelector('.details-grid').innerHTML = [
       kv('Run ID', item.id),
+      kv('Source type', item.sourceType),
+      kv('Inferred task unit', item.inferredTaskUnit),
+      kv('Confidence', item.confidence),
       kv('Session ID', item.sessionId),
+      kv('Session key', item.childSessionKey),
       kv('Requester', item.requester),
       kv('Model', item.model),
       kv('Created', fmtDate(item.createdAt)),
+      kv('Updated', fmtDate(item.updatedAt)),
       kv('Archive at', fmtDate(item.archiveAt)),
       kv('Input tokens', fmtNum(item.usage.input)),
       kv('Output tokens', fmtNum(item.usage.output)),
       kv('Cache read', fmtNum(item.usage.cacheRead)),
+      kv('Tool calls', fmtNum(item.toolCallCount)),
       kv('Cost total', fmtCost(item.usage.cost.total)),
-      kv('Source files', item.sourceFiles.join('<br>'))
+      kv('Notes', (item.notes || []).join('<br>')),
+      kv('Source files', (item.sourceFiles || []).join('<br>'))
     ].join('');
     runs.appendChild(node);
   }
@@ -127,9 +140,11 @@ function renderRuns(items) {
 function renderFilterMeta(filteredItems) {
   const search = document.getElementById('searchInput').value.trim();
   const status = document.getElementById('statusFilter').value;
+  const source = document.getElementById('sourceFilter').value;
   const time = document.getElementById('timeFilter').value;
   const filters = [];
   if (status !== 'all') filters.push(`status: ${status}`);
+  if (source !== 'all') filters.push(`source: ${source}`);
   if (time !== 'all') filters.push(`view: ${time}`);
   if (search) filters.push(`search: “${search}”`);
   document.getElementById('resultsMeta').textContent = filters.length
@@ -150,13 +165,17 @@ function render() {
   renderFilterMeta(filteredItems);
 }
 
-function hydrateStatusFilter(items) {
-  const select = document.getElementById('statusFilter');
+function hydrateSelect(selectId, values, labelPrefix) {
+  const select = document.getElementById(selectId);
   const current = select.value || 'all';
-  const statuses = [...new Set(items.map((item) => item.status).filter(Boolean))].sort();
-  select.innerHTML = '<option value="all">All statuses</option>' + statuses.map((status) => `<option value="${status}">${status}</option>`).join('');
-  if (statuses.includes(current)) select.value = current;
+  select.innerHTML = `<option value="all">All ${labelPrefix}</option>` + values.map((value) => `<option value="${value}">${value}</option>`).join('');
+  if (values.includes(current)) select.value = current;
   else select.value = 'all';
+}
+
+function hydrateFilters(items) {
+  hydrateSelect('statusFilter', [...new Set(items.map((item) => item.status).filter(Boolean))].sort(), 'statuses');
+  hydrateSelect('sourceFilter', [...new Set(items.map((item) => item.sourceType).filter(Boolean))].sort(), 'sources');
 }
 
 async function load() {
@@ -164,7 +183,7 @@ async function load() {
   const data = await res.json();
   state.data = data;
   state.lastLoadedAt = new Date().toISOString();
-  hydrateStatusFilter(data.items || []);
+  hydrateFilters(data.items || []);
   render();
 }
 
@@ -183,7 +202,7 @@ function setAutoRefresh(enabled) {
   renderFilterMeta(applyFilters((state.data && state.data.items) || []));
 }
 
-for (const id of ['searchInput', 'statusFilter', 'timeFilter']) {
+for (const id of ['searchInput', 'statusFilter', 'sourceFilter', 'timeFilter']) {
   document.getElementById(id).addEventListener(id === 'searchInput' ? 'input' : 'change', render);
 }
 
